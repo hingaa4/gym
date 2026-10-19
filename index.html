@@ -1,0 +1,382 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="三分化">
+<meta name="theme-color" content="#05070d">
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="icon-180.png">
+<title>三分化訓練</title>
+<style>
+  :root {
+    --bg: #05070d; --panel: #0d1424; --line: #1d2b4a; --blue: #3d8bff; --blue-dim: #16325f;
+    --text: #e8eefc; --muted: #8796b8; --green: #2ecc71; --red: #ff5d5d;
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { margin: 0; background: var(--bg); color: var(--text);
+    font-family: -apple-system, "PingFang TC", "Noto Sans TC", sans-serif; }
+  body { padding: calc(env(safe-area-inset-top) + 12px) 16px calc(env(safe-area-inset-bottom) + 120px); }
+  header { display: flex; align-items: center; gap: 10px; min-height: 44px; margin-bottom: 14px; }
+  header h1 { font-size: 20px; margin: 0; flex: 1; }
+  .back { background: none; border: 0; color: var(--blue); font-size: 17px; padding: 8px 4px; }
+  .hint { color: var(--muted); font-size: 14px; line-height: 1.5; margin: 0 0 14px; }
+  .grid { display: grid; gap: 10px; }
+  .grid.two { grid-template-columns: 1fr 1fr; }
+  button.card {
+    background: var(--panel); border: 1px solid var(--line); color: var(--text); border-radius: 14px;
+    padding: 16px; font-size: 17px; text-align: left; width: 100%; font-family: inherit;
+  }
+  button.card:active { background: var(--blue-dim); }
+  button.card .sub { display: block; color: var(--muted); font-size: 13px; margin-top: 4px; }
+  button.card.done { border-color: var(--green); }
+  button.card.day { font-size: 22px; font-weight: 700; text-align: center; padding: 22px 8px; }
+  .day small { display: block; color: var(--blue); font-size: 13px; font-weight: 500; margin-bottom: 4px; }
+  .badge { color: var(--green); font-size: 13px; margin-left: 6px; }
+
+  .weight { display: flex; align-items: center; justify-content: space-between; gap: 10px;
+    background: var(--panel); border: 1px solid var(--line); border-radius: 16px; padding: 12px; margin: 10px 0 14px; }
+  .weight button { width: 64px; height: 64px; border-radius: 12px; border: 0; background: var(--blue-dim);
+    color: var(--text); font-size: 20px; font-weight: 600; }
+  .weight button:active { background: var(--blue); }
+  .weight input { width: 100%; text-align: center; background: none; border: 0; color: var(--text);
+    font-size: 40px; font-weight: 700; font-family: inherit; }
+  .weight .unit { color: var(--muted); font-size: 13px; text-align: center; }
+  .big { width: 100%; border: 0; border-radius: 16px; padding: 20px; font-size: 20px; font-weight: 700;
+    background: var(--blue); color: #fff; font-family: inherit; }
+  .big:active { filter: brightness(.85); }
+  .ghost { width: 100%; margin-top: 10px; border: 1px solid var(--line); border-radius: 12px; padding: 12px;
+    background: none; color: var(--muted); font-size: 15px; font-family: inherit; }
+  .sets { display: flex; flex-wrap: wrap; gap: 8px; margin: 16px 0 0; padding: 0; list-style: none; }
+  .sets li { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 8px 10px; font-size: 14px; }
+  .sets li b { color: var(--blue); margin-right: 4px; }
+
+  .summary { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 14px; margin-bottom: 12px; }
+  .summary h3 { margin: 0 0 8px; font-size: 16px; }
+  .summary h4 { margin: 10px 0 4px; font-size: 14px; color: var(--blue); }
+  .summary p { margin: 2px 0; font-size: 14px; line-height: 1.5; }
+  .summary p span { color: var(--muted); }
+  .empty { color: var(--muted); text-align: center; padding: 40px 0; }
+  .row { display: flex; gap: 10px; margin-top: 18px; }
+  .row > * { flex: 1; }
+
+  #timer { position: fixed; left: 12px; right: 12px; bottom: calc(env(safe-area-inset-bottom) + 12px);
+    background: #0f1d38; border: 1px solid var(--blue); border-radius: 16px; padding: 12px 16px;
+    display: none; align-items: center; gap: 12px; box-shadow: 0 8px 30px rgba(0,0,0,.6); }
+  #timer.show { display: flex; }
+  #timer.over { border-color: var(--green); background: #0f2a1d; }
+  #timer .t { font-size: 30px; font-weight: 700; font-variant-numeric: tabular-nums; }
+  #timer .l { flex: 1; font-size: 13px; color: var(--muted); }
+  #timer button { background: none; border: 1px solid var(--line); color: var(--text); border-radius: 10px; padding: 8px 10px; font-size: 14px; }
+  #toast { position: fixed; top: calc(env(safe-area-inset-top) + 10px); left: 50%; transform: translateX(-50%);
+    background: var(--green); color: #002b12; font-weight: 600; padding: 8px 16px; border-radius: 20px;
+    opacity: 0; transition: opacity .2s; pointer-events: none; font-size: 14px; }
+  #toast.show { opacity: 1; }
+</style>
+</head>
+<body>
+<div id="app"></div>
+<div id="timer"><div class="t" id="timer-t">0:00</div><div class="l" id="timer-l"></div>
+  <button id="timer-add">+30s</button><button id="timer-x">✕</button></div>
+<div id="toast"></div>
+<input type="file" id="import-file" accept="application/json" hidden>
+
+<script>
+const REPS_PER_SET = 10;
+const WEIGHT_STEP = 2.5;
+
+// [部位, 建議, 休息秒數, 動作]
+const PLAN = {
+  "背": [
+    ["背", "3個動作×每個3-4組（2下拉+1划船 或 2划船+1下拉）", 180,
+      ["引體向上", "高位下拉", "器械下拉", "槓鈴划船", "啞鈴划船", "器械划船", "T槓划船", "坐姿鋼線划船"]],
+    ["肩後束", "選2個動作×每個3-4組", 120,
+      ["蝴蝶機反向飛鳥", "啞鈴俯身飛鳥", "龍門架反向飛鳥", "龍門架繩索面拉"]],
+    ["肱二頭", "選2個動作×每個3-4組", 120,
+      ["啞鈴彎舉", "槓鈴彎舉", "龍門架彎舉", "器械彎舉", "集中彎舉", "牧師椅彎舉"]],
+  ],
+  "胸": [
+    ["胸", "選3個動作×每個3-4組（2平板推胸+1上斜或下斜推胸或夾胸）", 180,
+      ["平板槓鈴推胸", "平板啞鈴推胸", "平板器械推胸", "平板史密斯推胸", "上斜推胸", "下斜推胸",
+       "雙槓臂屈伸", "蝴蝶機夾胸", "龍門架夾胸"]],
+    ["肩前中束", "選2個動作×每個3-4組（2推舉 或 1推舉+1其他）", 120,
+      ["啞鈴推舉", "槓鈴推舉", "器械推舉", "史密斯推舉", "啞鈴前平舉", "槓鈴前平舉", "槓鈴片前平舉",
+       "啞鈴側平舉", "龍門架繩索側平舉", "器械側平舉", "槓鈴提拉", "龍門架提拉"]],
+    ["肱三頭", "選2個動作×每個3-4組", 120,
+      ["槓鈴仰臥臂屈伸", "啞鈴頸後臂屈伸", "龍門架繩索臂屈伸", "過頂臂屈伸", "直桿下壓"]],
+  ],
+  "腿": [
+    ["腿", "選3個動作×每個4-5組（這次練股四 下次練膕繩 不要一次都練）", 240,
+      ["深蹲", "器械腿屈伸", "硬拉", "器械腿彎舉", "北歐挺", "哈克機", "倒蹬機", "箭步蹲"]],
+    ["腹肌", "任意動作共5-10組", 120,
+      ["平板卷腹", "器械卷腹", "龍門架跪姿卷腹", "平板舉腿", "懸垂舉腿"]],
+    ["臀肌", "選2個動作×每個4組（2髖伸 或 1髖伸+1髖外展）", 120,
+      ["槓鈴臀衝", "器械臀衝", "史密斯臀衝", "龍門架後踢", "器械後踢", "器械髖外展", "龍門架單邊髖外展"]],
+  ],
+};
+const DAYS = Object.keys(PLAN);
+
+// ---------- 儲存 ----------
+const store = {
+  get logs() { return JSON.parse(localStorage.getItem("logs") || "[]"); },
+  set logs(v) { localStorage.setItem("logs", JSON.stringify(v)); },
+  get weights() { return JSON.parse(localStorage.getItem("weights") || "{}"); },
+  set weights(v) { localStorage.setItem("weights", JSON.stringify(v)); },
+};
+
+const today = () => {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+};
+const fmtW = w => w ? `${+w.toFixed(2)}kg` : "自重";
+const setsToday = ex => store.logs.filter(l => l.date === today() && l.ex === ex);
+const getWeight = ex => {
+  const w = store.weights;
+  if (ex in w) return w[ex];
+  const last = store.logs.filter(l => l.ex === ex).pop();
+  return last ? last.w : 0;
+};
+const setWeight = (ex, v) => { const w = store.weights; w[ex] = Math.max(0, Math.round(v * 100) / 100); store.weights = w; };
+
+// ---------- 畫面 ----------
+const app = document.getElementById("app");
+let stack = [{ view: "home" }];
+const go = s => { stack.push(s); render(); scrollTo(0, 0); };
+const back = () => { stack.pop(); render(); scrollTo(0, 0); };
+const esc = s => String(s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+
+function header(title) {
+  return `<header>${stack.length > 1 ? `<button class="back" data-act="back">‹ 返回</button>` : ""}<h1>${esc(title)}</h1></header>`;
+}
+
+function summaryHTML(date, logs) {
+  const parts = {};
+  logs.forEach(l => ((parts[l.part] ??= {})[l.ex] ??= []).push(l.w));
+  let html = `<div class="summary"><h3>📅 ${date}（${logs[0].day}日）</h3>`;
+  for (const [part, exs] of Object.entries(parts)) {
+    html += `<h4>${esc(part)}</h4>`;
+    for (const [ex, ws] of Object.entries(exs))
+      html += `<p>${esc(ex)}：${ws.length} 組 <span>｜${ws.map(w => `${fmtW(w)}×${REPS_PER_SET}`).join("、")}</span></p>`;
+  }
+  return html + "</div>";
+}
+
+const views = {
+  home() {
+    const n = store.logs.filter(l => l.date === today()).length;
+    return header("三分化訓練計劃") +
+      `<p class="hint">組間休息：胸背腿 3min　肩手 2min　練腿可休更長</p>
+       <div class="grid">${DAYS.map((d, i) =>
+         `<button class="card day" data-act="day" data-di="${i}"><small>Day${i + 1}</small>${d}</button>`).join("")}</div>
+       <div class="row">
+         <button class="ghost" data-act="today">📊 今日記錄${n ? `（${n} 組）` : ""}</button>
+         <button class="ghost" data-act="history">🗓 歷史</button>
+       </div>`;
+  },
+  day({ di }) {
+    return header(`Day${di + 1} ${DAYS[di]}日`) +
+      `<div class="grid">${PLAN[DAYS[di]].map(([part, advice, , exs], gi) => {
+        const n = store.logs.filter(l => l.date === today() && exs.includes(l.ex)).length;
+        return `<button class="card" data-act="part" data-di="${di}" data-gi="${gi}">${esc(part)}${n ? `<span class="badge">✅${n} 組</span>` : ""}
+          <span class="sub">${esc(advice)}</span></button>`;
+      }).join("")}</div>`;
+  },
+  part({ di, gi }) {
+    const [part, advice, , exs] = PLAN[DAYS[di]][gi];
+    return header(part) + `<p class="hint">${esc(advice)}</p>
+      <div class="grid two">${exs.map((ex, ei) => {
+        const n = setsToday(ex).length;
+        return `<button class="card ${n ? "done" : ""}" data-act="ex" data-di="${di}" data-gi="${gi}" data-ei="${ei}">${esc(ex)}
+          <span class="sub">${n ? `✅ ${n} 組` : fmtW(getWeight(ex))}</span></button>`;
+      }).join("")}</div>`;
+  },
+  ex({ di, gi, ei }) {
+    const [part, advice, rest, exs] = PLAN[DAYS[di]][gi];
+    const ex = exs[ei];
+    const sets = setsToday(ex);
+    const w = getWeight(ex);
+    return header(ex) +
+      `<p class="hint">${esc(part)}｜${esc(advice)}<br>每組 ${REPS_PER_SET} 次，組間休息 ${rest / 60} 分鐘</p>
+       <div class="weight">
+         <button data-act="w" data-d="-1">−${WEIGHT_STEP}</button>
+         <div style="flex:1;min-width:0">
+           <input id="w-input" type="number" inputmode="decimal" step="0.5" min="0" value="${w || ""}" placeholder="自重">
+           <div class="unit">kg（空白 = 自重）</div>
+         </div>
+         <button data-act="w" data-d="1">+${WEIGHT_STEP}</button>
+       </div>
+       <button class="big" data-act="record">✅ 完成第 ${sets.length + 1} 組（${fmtW(w)}×${REPS_PER_SET}）</button>
+       ${sets.length ? `<ul class="sets">${sets.map((s, i) => `<li><b>${i + 1}</b>${fmtW(s.w)}×${s.reps}</li>`).join("")}</ul>
+         <button class="ghost" data-act="undo">↩️ 撤銷上一組</button>` : ""}`;
+  },
+  today() {
+    const logs = store.logs.filter(l => l.date === today());
+    return header("今日記錄") + (logs.length ? summaryHTML(today(), logs) : `<div class="empty">今日還沒有記錄</div>`);
+  },
+  history() {
+    const byDate = {};
+    store.logs.forEach(l => (byDate[l.date] ??= []).push(l));
+    const dates = Object.keys(byDate).sort().reverse();
+    return header("歷史") +
+      (dates.length ? dates.map(d => summaryHTML(d, byDate[d])).join("") : `<div class="empty">還沒有記錄</div>`) +
+      `<p class="hint" style="margin-top:20px">記錄只存在這部 iPhone。換機或清除 Safari 資料前，記得先匯出備份。</p>
+       <div class="row" style="margin-top:0">
+         <button class="ghost" data-act="export">⬆️ 匯出備份</button>
+         <button class="ghost" data-act="import">⬇️ 匯入備份</button>
+       </div>`;
+  },
+};
+
+function render() {
+  const s = stack[stack.length - 1];
+  app.innerHTML = views[s.view](s);
+  const input = document.getElementById("w-input");
+  if (input) input.addEventListener("input", () => {
+    const { di, gi, ei } = s;
+    setWeight(PLAN[DAYS[di]][gi][3][ei], parseFloat(input.value) || 0);
+    const btn = app.querySelector('[data-act="record"]');
+    const w = getWeight(PLAN[DAYS[di]][gi][3][ei]);
+    btn.textContent = btn.textContent.replace(/（.*）/, `（${fmtW(w)}×${REPS_PER_SET}）`);
+  });
+}
+
+function toast(msg) {
+  const t = document.getElementById("toast");
+  t.textContent = msg; t.classList.add("show");
+  clearTimeout(toast.h); toast.h = setTimeout(() => t.classList.remove("show"), 1500);
+}
+
+app.addEventListener("click", e => {
+  const b = e.target.closest("[data-act]");
+  if (!b) return;
+  unlockAudio();
+  const s = stack[stack.length - 1];
+  const { di, gi, ei } = Object.fromEntries(Object.entries(b.dataset).map(([k, v]) => [k, +v]));
+  switch (b.dataset.act) {
+    case "back": return back();
+    case "day": return go({ view: "day", di });
+    case "part": return go({ view: "part", di, gi });
+    case "ex": return go({ view: "ex", di, gi, ei });
+    case "today": return go({ view: "today" });
+    case "history": return go({ view: "history" });
+    case "w": {
+      const ex = PLAN[DAYS[s.di]][s.gi][3][s.ei];
+      setWeight(ex, getWeight(ex) + WEIGHT_STEP * +b.dataset.d);
+      return render();
+    }
+    case "record": {
+      const [part, , rest, exs] = PLAN[DAYS[s.di]][s.gi];
+      const ex = exs[s.ei], w = getWeight(ex);
+      store.logs = [...store.logs, { date: today(), day: DAYS[s.di], part, ex, reps: REPS_PER_SET, w, ts: Date.now() }];
+      startTimer(rest, ex);
+      toast(`已記錄 ${fmtW(w)}×${REPS_PER_SET}`);
+      return render();
+    }
+    case "undo": {
+      const ex = PLAN[DAYS[s.di]][s.gi][3][s.ei];
+      const logs = store.logs;
+      for (let i = logs.length - 1; i >= 0; i--)
+        if (logs[i].date === today() && logs[i].ex === ex) { logs.splice(i, 1); break; }
+      store.logs = logs;
+      stopTimer();
+      toast("已撤銷上一組");
+      return render();
+    }
+    case "export": {
+      const blob = new Blob([JSON.stringify({ logs: store.logs, weights: store.weights }, null, 1)], { type: "application/json" });
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(blob); a.download = `gym-${today()}.json`; a.click();
+      return;
+    }
+    case "import": return document.getElementById("import-file").click();
+  }
+});
+
+document.getElementById("import-file").addEventListener("change", async e => {
+  const file = e.target.files[0];
+  if (!file) return;
+  try {
+    const data = JSON.parse(await file.text());
+    if (!Array.isArray(data.logs)) throw 0;
+    if (!confirm(`匯入 ${data.logs.length} 組記錄？目前的記錄會被取代。`)) return;
+    store.logs = data.logs; store.weights = data.weights || {};
+    toast("匯入完成"); render();
+  } catch { alert("檔案格式不正確"); }
+  e.target.value = "";
+});
+
+// ---------- 休息計時 ----------
+const timerEl = document.getElementById("timer");
+let tick = null, audioCtx = null, wakeLock = null;
+
+function unlockAudio() {
+  if (!audioCtx) try { audioCtx = new (window.AudioContext || window.webkitAudioContext)(); } catch {}
+  if (audioCtx?.state === "suspended") audioCtx.resume();
+}
+function beep() {
+  if (!audioCtx) return;
+  [0, 0.25, 0.5].forEach(t => {
+    const o = audioCtx.createOscillator(), g = audioCtx.createGain();
+    o.frequency.value = 880; o.connect(g); g.connect(audioCtx.destination);
+    g.gain.setValueAtTime(0.3, audioCtx.currentTime + t);
+    o.start(audioCtx.currentTime + t); o.stop(audioCtx.currentTime + t + 0.15);
+  });
+}
+
+function startTimer(sec, ex) {
+  localStorage.setItem("timer", JSON.stringify({ end: Date.now() + sec * 1000, ex, beeped: false }));
+  navigator.wakeLock?.request("screen").then(l => wakeLock = l).catch(() => {});
+  runTimer();
+}
+function stopTimer() {
+  localStorage.removeItem("timer");
+  clearInterval(tick); tick = null;
+  timerEl.classList.remove("show", "over");
+  wakeLock?.release().catch(() => {}); wakeLock = null;
+}
+function runTimer() {
+  clearInterval(tick);
+  const update = () => {
+    const t = JSON.parse(localStorage.getItem("timer") || "null");
+    if (!t) return stopTimer();
+    const left = Math.round((t.end - Date.now()) / 1000);
+    timerEl.classList.add("show");
+    if (left > 0) {
+      timerEl.classList.remove("over");
+      document.getElementById("timer-t").textContent = `${Math.floor(left / 60)}:${String(left % 60).padStart(2, "0")}`;
+      document.getElementById("timer-l").textContent = `休息中｜${t.ex}`;
+    } else {
+      timerEl.classList.add("over");
+      document.getElementById("timer-t").textContent = "GO";
+      document.getElementById("timer-l").textContent = `休息結束！開始 ${t.ex} 下一組 💪`;
+      if (!t.beeped) { beep(); t.beeped = true; localStorage.setItem("timer", JSON.stringify(t)); }
+      if (left < -600) stopTimer();
+    }
+  };
+  update();
+  tick = setInterval(update, 500);
+}
+document.getElementById("timer-x").onclick = stopTimer;
+document.getElementById("timer-add").onclick = () => {
+  const t = JSON.parse(localStorage.getItem("timer") || "null");
+  if (!t) return;
+  t.end = Math.max(t.end, Date.now()) + 30000; t.beeped = false;
+  localStorage.setItem("timer", JSON.stringify(t));
+  runTimer();
+};
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "visible" && localStorage.getItem("timer")) {
+    runTimer();
+    if (!wakeLock) navigator.wakeLock?.request("screen").then(l => wakeLock = l).catch(() => {});
+  }
+});
+
+render();
+if (localStorage.getItem("timer")) runTimer();
+if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js");
+</script>
+</body>
+</html>
