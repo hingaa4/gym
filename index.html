@@ -49,6 +49,8 @@
   .weight .unit { color: var(--muted); font-size: 13px; text-align: center; }
   .last { background: var(--panel); border: 1px solid var(--line); border-left: 3px solid var(--blue);
     border-radius: 10px; padding: 10px 12px; font-size: 14px; color: var(--text); }
+  .field { width: 100%; margin: 4px 0; padding: 12px; border-radius: 10px; border: 1px solid var(--line);
+    background: var(--bg); color: var(--text); font-size: 16px; font-family: inherit; }
   .reps { display: flex; gap: 8px; margin-bottom: 12px; }
   .reps button { flex: 1; padding: 14px 0; border-radius: 12px; border: 1px solid var(--line); background: var(--panel);
     color: var(--text); font-size: 17px; font-family: inherit; }
@@ -115,14 +117,38 @@ const WEEKDAY_NAMES = "日一二三四五六";
 const DAYS = Object.keys(PLAN);
 
 // ---------- 儲存 ----------
+// raw 包含已刪除的記錄（del: true），同步時需要；畫面只用 logs
+const load = (k, d) => JSON.parse(localStorage.getItem(k) || d);
+const save = (k, v) => localStorage.setItem(k, JSON.stringify(v));
+const touchPrefs = () => save("prefsU", Date.now());
 const store = {
-  get logs() { return JSON.parse(localStorage.getItem("logs") || "[]"); },
-  set logs(v) { localStorage.setItem("logs", JSON.stringify(v)); },
-  get weights() { return JSON.parse(localStorage.getItem("weights") || "{}"); },
-  set weights(v) { localStorage.setItem("weights", JSON.stringify(v)); },
-  get reps() { return JSON.parse(localStorage.getItem("reps") || "{}"); },
-  set reps(v) { localStorage.setItem("reps", JSON.stringify(v)); },
+  get raw() { return load("logs", "[]"); },
+  set raw(v) { save("logs", v); },
+  get logs() { return this.raw.filter(l => !l.del); },
+  get weights() { return load("weights", "{}"); },
+  set weights(v) { save("weights", v); touchPrefs(); },
+  get reps() { return load("reps", "{}"); },
+  set reps(v) { save("reps", v); touchPrefs(); },
 };
+const newId = () => crypto.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+// 舊版記錄沒有 id，補上
+if (store.raw.some(l => !l.id)) store.raw = store.raw.map(l => l.id ? l : { ...l, id: newId(), u: l.ts || Date.now() });
+
+function addLog(log) {
+  const now = Date.now();
+  store.raw = [...store.raw, { ...log, id: newId(), ts: now, u: now }];
+  scheduleSync();
+}
+function deleteLog(id) {
+  store.raw = store.raw.map(l => l.id === id ? { ...l, del: true, u: Date.now() } : l);
+  scheduleSync();
+}
+// 以 id 合併兩份記錄，u 較新的勝出
+function mergeLogs(a, b) {
+  const m = new Map();
+  for (const l of [...a, ...b]) if (l?.id && (!m.has(l.id) || (l.u || 0) > (m.get(l.id).u || 0))) m.set(l.id, l);
+  return [...m.values()].sort((x, y) => x.ts - y.ts);
+}
 
 const today = () => {
   const d = new Date();
@@ -190,7 +216,8 @@ const views = {
        <div class="row">
          <button class="ghost" data-act="today">📊 今日記錄${n ? `（${n} 組）` : ""}</button>
          <button class="ghost" data-act="history">🗓 歷史</button>
-       </div>`;
+       </div>
+       ${load("sync", "null") ? `<p class="hint" id="sync-status" style="text-align:center;margin-top:14px">${esc(syncStatusText())}</p>` : ""}`;
   },
   day({ di }) {
     const parts = PLAN[DAYS[di]];
@@ -238,8 +265,8 @@ const views = {
     const dates = Object.keys(byDate).sort().reverse();
     return header("歷史") +
       (dates.length ? dates.map(d => summaryHTML(d, byDate[d])).join("") : `<div class="empty">還沒有記錄</div>`) +
-      `<p class="hint" style="margin-top:20px">記錄只存在這部 iPhone。換機或清除 Safari 資料前，記得先匯出備份。</p>
-       <div class="row" style="margin-top:0">
+      syncPanel() +
+      `<div class="row">
          <button class="ghost" data-act="export">⬆️ 匯出備份</button>
          <button class="ghost" data-act="import">⬇️ 匯入備份</button>
        </div>`;
@@ -253,6 +280,7 @@ function render() {
   if (input) input.addEventListener("input", () => {
     const { di, gi, ei } = s;
     setWeight(PLAN[DAYS[di]][gi][3][ei], parseFloat(input.value) || 0);
+    scheduleSync();
     const btn = app.querySelector('[data-act="record"]');
     const ex = PLAN[DAYS[di]][gi][3][ei];
     btn.textContent = btn.textContent.replace(/（.*）/, `（${fmtW(getWeight(ex))}×${getReps(ex)}）`);
@@ -280,26 +308,26 @@ app.addEventListener("click", e => {
     case "w": {
       const ex = PLAN[DAYS[s.di]][s.gi][3][s.ei];
       setWeight(ex, getWeight(ex) + WEIGHT_STEP * +b.dataset.d);
+      scheduleSync();
       return render();
     }
     case "reps": {
       setReps(PLAN[DAYS[s.di]][s.gi][3][s.ei], +b.dataset.n);
+      scheduleSync();
       return render();
     }
     case "record": {
       const [part, , rest, exs] = PLAN[DAYS[s.di]][s.gi];
       const ex = exs[s.ei], w = getWeight(ex), reps = getReps(ex);
-      store.logs = [...store.logs, { date: today(), day: DAYS[s.di], part, ex, reps, w, ts: Date.now() }];
+      addLog({ date: today(), day: DAYS[s.di], part, ex, reps, w });
       startTimer(rest, ex);
       toast(`已記錄 ${fmtW(w)}×${reps}`);
       return render();
     }
     case "undo": {
       const ex = PLAN[DAYS[s.di]][s.gi][3][s.ei];
-      const logs = store.logs;
-      for (let i = logs.length - 1; i >= 0; i--)
-        if (logs[i].date === today() && logs[i].ex === ex) { logs.splice(i, 1); break; }
-      store.logs = logs;
+      const last = setsToday(ex).at(-1);
+      if (last) deleteLog(last.id);
       stopTimer();
       toast("已撤銷上一組");
       return render();
@@ -311,6 +339,17 @@ app.addEventListener("click", e => {
       return;
     }
     case "import": return document.getElementById("import-file").click();
+    case "sync-save": {
+      const url = document.getElementById("sync-url").value.trim().replace(/\/+$/, "");
+      const token = document.getElementById("sync-token").value.trim();
+      if (url && !/^https?:\/\//.test(url)) return alert("網址要以 https:// 開頭");
+      save("sync", url ? { url, token } : null);
+      syncState = { msg: url ? "連線中…" : "未設定" };
+      render();
+      if (url) syncNow(true);
+      return;
+    }
+    case "sync-now": return syncNow(true);
   }
 });
 
@@ -320,12 +359,78 @@ document.getElementById("import-file").addEventListener("change", async e => {
   try {
     const data = JSON.parse(await file.text());
     if (!Array.isArray(data.logs)) throw 0;
-    if (!confirm(`匯入 ${data.logs.length} 組記錄？目前的記錄會被取代。`)) return;
-    store.logs = data.logs; store.weights = data.weights || {};
+    if (!confirm(`匯入 ${data.logs.length} 組記錄？會和目前的記錄合併。`)) return;
+    const imported = data.logs.map(l => l.id ? l : { ...l, id: newId(), u: l.ts || Date.now() });
+    store.raw = mergeLogs(store.raw, imported);
+    if (data.weights) store.weights = { ...data.weights, ...store.weights };
+    scheduleSync();
     toast("匯入完成"); render();
   } catch { alert("檔案格式不正確"); }
   e.target.value = "";
 });
+
+// ---------- 雲端同步 ----------
+let syncState = { msg: load("sync", "null") ? "" : "未設定" }, syncTimer = null, syncing = false;
+
+function syncPanel() {
+  const cfg = load("sync", "null") || {};
+  return `<div class="summary" style="margin-top:20px">
+    <h3>☁️ 雲端同步</h3>
+    <p class="hint" style="margin:0 0 10px">設定後，每完成一組都會自動存到你的伺服器，換機也不會失去記錄。</p>
+    <input class="field" id="sync-url" type="url" placeholder="伺服器網址 https://…" value="${esc(cfg.url || "")}" autocapitalize="off" autocorrect="off">
+    <input class="field" id="sync-token" type="password" placeholder="同步密碼" value="${esc(cfg.token || "")}">
+    <div class="row" style="margin-top:8px">
+      <button class="ghost" style="margin:0" data-act="sync-save">💾 儲存</button>
+      <button class="ghost" style="margin:0" data-act="sync-now">🔄 立即同步</button>
+    </div>
+    <p class="hint" id="sync-status" style="margin:10px 0 0">${esc(syncStatusText())}</p>
+  </div>`;
+}
+function syncStatusText() {
+  if (syncState.msg) return syncState.msg;
+  const last = localStorage.getItem("syncAt");
+  return last ? `☁️ 已同步 ${new Date(+last).toLocaleString("zh-HK", { hour12: false })}` : "";
+}
+function showSync() {
+  const el = document.getElementById("sync-status");
+  if (el) el.textContent = syncStatusText();
+}
+
+function scheduleSync() {
+  clearTimeout(syncTimer);
+  syncTimer = setTimeout(() => syncNow(), 800);
+}
+async function syncNow(manual = false) {
+  const cfg = load("sync", "null");
+  if (!cfg?.url || syncing) return;
+  if (!navigator.onLine) { syncState = { msg: "📴 離線中，有網絡時會自動同步" }; return showSync(); }
+  syncing = true;
+  try {
+    const prefs = { weights: store.weights, reps: store.reps, u: +(localStorage.getItem("prefsU") || 0) };
+    const res = await fetch(`${cfg.url}/api/sync`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${cfg.token}` },
+      body: JSON.stringify({ logs: store.raw, prefs }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+    store.raw = mergeLogs(store.raw, data.logs || []);
+    const sp = data.prefs;
+    if (sp && sp.u > prefs.u) { save("weights", sp.weights || {}); save("reps", sp.reps || {}); save("prefsU", sp.u); }
+    localStorage.setItem("syncAt", Date.now());
+    syncState = {};
+    if (manual) toast("同步完成");
+    // 正在輸入時不要重畫，免得打斷輸入
+    if (document.activeElement?.tagName !== "INPUT") render(); else showSync();
+  } catch (err) {
+    syncState = { msg: `⚠️ 同步失敗：${err.message === "Failed to fetch" || err.name === "TypeError" ? "連不上伺服器" : err.message}` };
+    showSync();
+  } finally {
+    syncing = false;
+  }
+}
+window.addEventListener("online", () => syncNow());
+setInterval(() => syncNow(), 60000);
 
 // ---------- 休息計時 ----------
 const timerEl = document.getElementById("timer");
@@ -387,6 +492,7 @@ document.getElementById("timer-add").onclick = () => {
   runTimer();
 };
 document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "visible") syncNow();
   if (document.visibilityState === "visible" && localStorage.getItem("timer")) {
     runTimer();
     if (!wakeLock) navigator.wakeLock?.request("screen").then(l => wakeLock = l).catch(() => {});
@@ -395,6 +501,7 @@ document.addEventListener("visibilitychange", () => {
 
 render();
 if (localStorage.getItem("timer")) runTimer();
+syncNow();
 if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js");
 </script>
 </body>
