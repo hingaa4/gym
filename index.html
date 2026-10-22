@@ -47,6 +47,8 @@
   .weight input { width: 100%; text-align: center; background: none; border: 0; color: var(--text);
     font-size: 40px; font-weight: 700; font-family: inherit; }
   .weight .unit { color: var(--muted); font-size: 13px; text-align: center; }
+  .last { background: var(--panel); border: 1px solid var(--line); border-left: 3px solid var(--blue);
+    border-radius: 10px; padding: 10px 12px; font-size: 14px; color: var(--text); }
   .reps { display: flex; gap: 8px; margin-bottom: 12px; }
   .reps button { flex: 1; padding: 14px 0; border-radius: 12px; border: 1px solid var(--line); background: var(--panel);
     color: var(--text); font-size: 17px; font-family: inherit; }
@@ -136,7 +138,19 @@ const getWeight = ex => {
 };
 const getReps = ex => store.reps[ex] ?? REP_CHOICES[0];
 const setReps = (ex, n) => { const r = store.reps; r[ex] = n; store.reps = r; };
+// 上一次（今天以前）做這個動作的所有組
+const lastSession = ex => {
+  const past = store.logs.filter(l => l.ex === ex && l.date < today());
+  if (!past.length) return null;
+  const date = past.at(-1).date;
+  return { date, sets: past.filter(l => l.date === date) };
+};
+const fmtDate = d => d.slice(5).replace("-", "/");
 const fmtSet = l => `${fmtW(l.w)}×${l.reps}`;
+const lastText = ex => {
+  const last = lastSession(ex);
+  return last ? `上次 ${fmtSet(last.sets.at(-1))}` : "未做過";
+};
 const setWeight = (ex, v) => { const w = store.weights; w[ex] = Math.max(0, Math.round(v * 100) / 100); store.weights = w; };
 
 // ---------- 畫面 ----------
@@ -186,7 +200,7 @@ const views = {
        <div class="grid two">${exs.map((ex, ei) => {
         const n = setsToday(ex).length;
         return `<button class="card ${n ? "done" : ""}" data-act="ex" data-di="${di}" data-gi="${gi}" data-ei="${ei}">${esc(ex)}
-          <span class="sub">${n ? `✅ ${n}/${TARGET_SETS.join("-")} 組` : fmtW(getWeight(ex))}</span></button>`;
+          <span class="sub">${n ? `✅ ${n}/${TARGET_SETS.join("-")} 組` : lastText(ex)}</span></button>`;
       }).join("")}</div>`).join("");
   },
   ex({ di, gi, ei }) {
@@ -198,6 +212,7 @@ const views = {
       : sets.length >= TARGET_SETS[0] ? `✅ 已達 ${TARGET_SETS[0]} 組，想做可以再加 1 組` : "";
     return header(ex) +
       `<p class="hint">${esc(part)}${advice ? `｜${esc(advice)}` : ""}<br>目標 ${TARGET_TEXT}，組間休息 ${rest / 60} 分鐘</p>
+       ${(last => last ? `<div class="last">上次（${fmtDate(last.date)}）：${last.sets.map(fmtSet).join("、")}</div>` : "")(lastSession(ex))}
        <div class="weight">
          <button data-act="w" data-d="-1">−${WEIGHT_STEP}</button>
          <div style="flex:1;min-width:0">
