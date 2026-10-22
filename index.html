@@ -6,11 +6,11 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta name="apple-mobile-web-app-title" content="三分化">
+<meta name="apple-mobile-web-app-title" content="雙分化">
 <meta name="theme-color" content="#05070d">
 <link rel="manifest" href="manifest.json">
 <link rel="apple-touch-icon" href="icon-180.png">
-<title>三分化訓練</title>
+<title>雙分化訓練</title>
 <style>
   :root {
     --bg: #05070d; --panel: #0d1424; --line: #1d2b4a; --blue: #3d8bff; --blue-dim: #16325f;
@@ -35,6 +35,8 @@
   button.card.done { border-color: var(--green); }
   button.card.day { font-size: 22px; font-weight: 700; text-align: center; padding: 22px 8px; }
   .day small { display: block; color: var(--blue); font-size: 13px; font-weight: 500; margin-bottom: 4px; }
+  .section { margin: 18px 0 10px; font-size: 15px; color: var(--blue); }
+  .section span { color: var(--muted); font-size: 12px; font-weight: 400; margin-left: 8px; }
   .badge { color: var(--green); font-size: 13px; margin-left: 6px; }
 
   .weight { display: flex; align-items: center; justify-content: space-between; gap: 10px;
@@ -88,35 +90,19 @@
 const REPS_PER_SET = 10;
 const WEIGHT_STEP = 2.5;
 
-// [部位, 建議, 休息秒數, 動作]
+// 雙分化：[部位, 建議, 休息秒數, 動作]
 const PLAN = {
-  "背": [
-    ["背", "3個動作×每個3-4組（2下拉+1划船 或 2划船+1下拉）", 180,
-      ["引體向上", "高位下拉", "器械下拉", "槓鈴划船", "啞鈴划船", "器械划船", "T槓划船", "坐姿鋼線划船"]],
-    ["肩後束", "選2個動作×每個3-4組", 120,
-      ["蝴蝶機反向飛鳥", "啞鈴俯身飛鳥", "龍門架反向飛鳥", "龍門架繩索面拉"]],
-    ["肱二頭", "選2個動作×每個3-4組", 120,
-      ["啞鈴彎舉", "槓鈴彎舉", "龍門架彎舉", "器械彎舉", "集中彎舉", "牧師椅彎舉"]],
+  "胸背": [
+    ["胸背", "", 180, ["臥推", "引體向上", "推肩", "划船", "俯臥撐"]],
   ],
-  "胸": [
-    ["胸", "選3個動作×每個3-4組（2平板推胸+1上斜或下斜推胸或夾胸）", 180,
-      ["平板槓鈴推胸", "平板啞鈴推胸", "平板器械推胸", "平板史密斯推胸", "上斜推胸", "下斜推胸",
-       "雙槓臂屈伸", "蝴蝶機夾胸", "龍門架夾胸"]],
-    ["肩前中束", "選2個動作×每個3-4組（2推舉 或 1推舉+1其他）", 120,
-      ["啞鈴推舉", "槓鈴推舉", "器械推舉", "史密斯推舉", "啞鈴前平舉", "槓鈴前平舉", "槓鈴片前平舉",
-       "啞鈴側平舉", "龍門架繩索側平舉", "器械側平舉", "槓鈴提拉", "龍門架提拉"]],
-    ["肱三頭", "選2個動作×每個3-4組", 120,
-      ["槓鈴仰臥臂屈伸", "啞鈴頸後臂屈伸", "龍門架繩索臂屈伸", "過頂臂屈伸", "直桿下壓"]],
-  ],
-  "腿": [
-    ["腿", "選3個動作×每個4-5組（這次練股四 下次練膕繩 不要一次都練）", 240,
-      ["深蹲", "器械腿屈伸", "硬拉", "器械腿彎舉", "北歐挺", "哈克機", "倒蹬機", "箭步蹲"]],
-    ["腹肌", "任意動作共5-10組", 120,
-      ["平板卷腹", "器械卷腹", "龍門架跪姿卷腹", "平板舉腿", "懸垂舉腿"]],
-    ["臀肌", "選2個動作×每個4組（2髖伸 或 1髖伸+1髖外展）", 120,
-      ["槓鈴臀衝", "器械臀衝", "史密斯臀衝", "龍門架後踢", "器械後踢", "器械髖外展", "龍門架單邊髖外展"]],
+  "四肢": [
+    ["下肢", "", 180, ["深蹲", "硬拉"]],
+    ["肩・手臂", "", 120, ["側平舉", "彎舉", "錘式彎舉"]],
   ],
 };
+// 每個訓練日對應星期幾（0 = 週日）
+const WEEKDAYS = { "胸背": [1, 4], "四肢": [2, 5] };
+const WEEKDAY_NAMES = "日一二三四五六";
 const DAYS = Object.keys(PLAN);
 
 // ---------- 儲存 ----------
@@ -167,31 +153,29 @@ function summaryHTML(date, logs) {
 const views = {
   home() {
     const n = store.logs.filter(l => l.date === today()).length;
-    return header("三分化訓練計劃") +
-      `<p class="hint">組間休息：胸背腿 3min　肩手 2min　練腿可休更長</p>
-       <div class="grid">${DAYS.map((d, i) =>
-         `<button class="card day" data-act="day" data-di="${i}"><small>Day${i + 1}</small>${d}</button>`).join("")}</div>
+    const wd = new Date().getDay();
+    return header("雙分化訓練計劃") +
+      `<p class="hint">組間休息：胸背腿 3min　肩手 2min</p>
+       <div class="grid">${DAYS.map((d, i) => {
+         const isToday = WEEKDAYS[d].includes(wd);
+         return `<button class="card day ${isToday ? "done" : ""}" data-act="day" data-di="${i}">
+           <small>${WEEKDAYS[d].map(x => "週" + WEEKDAY_NAMES[x]).join("　")}${isToday ? "・今天" : ""}</small>${d}</button>`;
+       }).join("")}</div>
        <div class="row">
          <button class="ghost" data-act="today">📊 今日記錄${n ? `（${n} 組）` : ""}</button>
          <button class="ghost" data-act="history">🗓 歷史</button>
        </div>`;
   },
   day({ di }) {
-    return header(`Day${di + 1} ${DAYS[di]}日`) +
-      `<div class="grid">${PLAN[DAYS[di]].map(([part, advice, , exs], gi) => {
-        const n = store.logs.filter(l => l.date === today() && exs.includes(l.ex)).length;
-        return `<button class="card" data-act="part" data-di="${di}" data-gi="${gi}">${esc(part)}${n ? `<span class="badge">✅${n} 組</span>` : ""}
-          <span class="sub">${esc(advice)}</span></button>`;
-      }).join("")}</div>`;
-  },
-  part({ di, gi }) {
-    const [part, advice, , exs] = PLAN[DAYS[di]][gi];
-    return header(part) + `<p class="hint">${esc(advice)}</p>
-      <div class="grid two">${exs.map((ex, ei) => {
+    const parts = PLAN[DAYS[di]];
+    return header(`${DAYS[di]}日`) + parts.map(([part, advice, rest, exs], gi) =>
+      `${parts.length > 1 ? `<h4 class="section">${esc(part)}<span>休息 ${rest / 60} 分鐘</span></h4>` : ""}
+       ${advice ? `<p class="hint">${esc(advice)}</p>` : ""}
+       <div class="grid two">${exs.map((ex, ei) => {
         const n = setsToday(ex).length;
         return `<button class="card ${n ? "done" : ""}" data-act="ex" data-di="${di}" data-gi="${gi}" data-ei="${ei}">${esc(ex)}
           <span class="sub">${n ? `✅ ${n} 組` : fmtW(getWeight(ex))}</span></button>`;
-      }).join("")}</div>`;
+      }).join("")}</div>`).join("");
   },
   ex({ di, gi, ei }) {
     const [part, advice, rest, exs] = PLAN[DAYS[di]][gi];
@@ -199,7 +183,7 @@ const views = {
     const sets = setsToday(ex);
     const w = getWeight(ex);
     return header(ex) +
-      `<p class="hint">${esc(part)}｜${esc(advice)}<br>每組 ${REPS_PER_SET} 次，組間休息 ${rest / 60} 分鐘</p>
+      `<p class="hint">${esc(part)}${advice ? `｜${esc(advice)}` : ""}<br>每組 ${REPS_PER_SET} 次，組間休息 ${rest / 60} 分鐘</p>
        <div class="weight">
          <button data-act="w" data-d="-1">−${WEIGHT_STEP}</button>
          <div style="flex:1;min-width:0">
@@ -258,7 +242,6 @@ app.addEventListener("click", e => {
   switch (b.dataset.act) {
     case "back": return back();
     case "day": return go({ view: "day", di });
-    case "part": return go({ view: "part", di, gi });
     case "ex": return go({ view: "ex", di, gi, ei });
     case "today": return go({ view: "today" });
     case "history": return go({ view: "history" });
