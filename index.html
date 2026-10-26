@@ -51,6 +51,22 @@
     border-radius: 10px; padding: 10px 12px; font-size: 14px; color: var(--text); }
   .field { width: 100%; margin: 4px 0; padding: 12px; border-radius: 10px; border: 1px solid var(--line);
     background: var(--bg); color: var(--text); font-size: 16px; font-family: inherit; }
+  .subbox { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 12px; margin-bottom: 10px; }
+  .subbox .label { font-size: 13px; color: var(--muted); margin-bottom: 8px; }
+  .subbox .label span { color: #ffb347; margin-left: 8px; }
+  .chips { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 6px; }
+  .chips button { border: 1px solid var(--line); background: var(--bg); color: var(--text); border-radius: 18px;
+    padding: 7px 12px; font-size: 14px; font-family: inherit; }
+  .chips button.on { background: var(--blue-dim); border-color: var(--blue); font-weight: 600; }
+  .subname { color: #ffb347 !important; }
+  .subof { color: #ffb347; font-size: 12px; }
+  .fin { float: right; font-size: 12px; color: var(--green); font-weight: 500; margin-top: 3px; }
+  .finish { margin-top: 24px; background: var(--green); color: #002b12; }
+  .finished { margin-top: 24px; text-align: center; padding: 16px; border-radius: 16px; border: 1px solid var(--green);
+    color: var(--green); font-weight: 700; font-size: 18px; }
+  .stats { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 14px; }
+  .stats div { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 14px; color: var(--muted); font-size: 13px; }
+  .stats b { display: block; color: var(--text); font-size: 26px; margin-bottom: 2px; }
   .reps { display: flex; gap: 8px; margin-bottom: 12px; }
   .reps button { flex: 1; padding: 14px 0; border-radius: 12px; border: 1px solid var(--line); background: var(--panel);
     color: var(--text); font-size: 17px; font-family: inherit; }
@@ -112,8 +128,21 @@ const PLAN = {
   ],
 };
 // 每個訓練日對應星期幾（0 = 週日）
-const WEEKDAYS = { "胸背": [1, 4], "四肢": [2, 5] };
+const WEEKDAYS = { "胸背": [2, 5], "四肢": [1, 4] };
 const WEEKDAY_NAMES = "日一二三四五六";
+// 器械沒有／有人用時的常見代替動作（也可以自己輸入）
+const SUBS = {
+  "臥推": ["啞鈴推胸", "器械推胸", "史密斯推胸", "上斜推胸"],
+  "引體向上": ["高位下拉", "器械下拉", "輔助引體向上"],
+  "推肩": ["啞鈴推舉", "器械推舉", "史密斯推舉", "槓鈴推舉"],
+  "划船": ["槓鈴划船", "啞鈴划船", "器械划船", "T槓划船", "坐姿鋼線划船"],
+  "俯臥撐": ["跪姿俯臥撐", "啞鈴推胸", "雙槓臂屈伸"],
+  "深蹲": ["史密斯深蹲", "高腳杯深蹲", "哈克機", "倒蹬機"],
+  "硬拉": ["羅馬尼亞硬拉", "啞鈴硬拉", "器械腿彎舉"],
+  "側平舉": ["啞鈴側平舉", "龍門架繩索側平舉", "器械側平舉"],
+  "彎舉": ["啞鈴彎舉", "槓鈴彎舉", "龍門架彎舉", "器械彎舉", "牧師椅彎舉"],
+  "錘式彎舉": ["啞鈴錘式彎舉", "繩索錘式彎舉"],
+};
 const DAYS = Object.keys(PLAN);
 
 // ---------- 儲存 ----------
@@ -124,7 +153,8 @@ const touchPrefs = () => save("prefsU", Date.now());
 const store = {
   get raw() { return load("logs", "[]"); },
   set raw(v) { save("logs", v); },
-  get logs() { return this.raw.filter(l => !l.del); },
+  get logs() { return this.raw.filter(l => !l.del && !l.kind); },           // 每一組
+  get finishes() { return this.raw.filter(l => !l.del && l.kind === "done"); }, // 完成訓練
   get weights() { return load("weights", "{}"); },
   set weights(v) { save("weights", v); touchPrefs(); },
   get reps() { return load("reps", "{}"); },
@@ -155,24 +185,38 @@ const today = () => {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 };
 const fmtW = w => w ? `${+w.toFixed(2)}kg` : "自重";
+// 實際做的動作名稱（有代替就是代替的動作）
+const nameOf = l => l.actual || l.ex;
+// 今天每個原定動作改做了甚麼，只保留到當天
+const getSub = ex => { const t = load("subs", "{}"); return t.date === today() ? t.map?.[ex] || "" : ""; };
+const setSub = (ex, name) => {
+  const t = load("subs", "{}");
+  const map = t.date === today() ? t.map || {} : {};
+  if (name && name !== ex) map[ex] = name; else delete map[ex];
+  save("subs", { date: today(), map });
+};
+// 重量、下數、上次記錄都跟實際動作走
+const keyOf = ex => getSub(ex) || ex;
 const setsToday = ex => store.logs.filter(l => l.date === today() && l.ex === ex);
+const finishedToday = day => store.finishes.find(l => l.date === today() && l.day === day);
 const getWeight = ex => {
   const w = store.weights;
   if (ex in w) return w[ex];
-  const last = store.logs.filter(l => l.ex === ex).pop();
+  const last = store.logs.filter(l => nameOf(l) === ex).pop();
   return last ? last.w : 0;
 };
 const getReps = ex => store.reps[ex] ?? REP_CHOICES[0];
 const setReps = (ex, n) => { const r = store.reps; r[ex] = n; store.reps = r; };
 // 上一次（今天以前）做這個動作的所有組
 const lastSession = ex => {
-  const past = store.logs.filter(l => l.ex === ex && l.date < today());
+  const past = store.logs.filter(l => nameOf(l) === ex && l.date < today());
   if (!past.length) return null;
   const date = past.at(-1).date;
   return { date, sets: past.filter(l => l.date === date) };
 };
 const fmtDate = d => d.slice(5).replace("-", "/");
 const fmtSet = l => `${fmtW(l.w)}×${l.reps}`;
+const fmtSetNamed = l => `${l.actual ? `${l.actual} ` : ""}${fmtSet(l)}`;
 const lastText = ex => {
   const last = lastSession(ex);
   return last ? `上次 ${fmtSet(last.sets.at(-1))}` : "未做過";
@@ -190,14 +234,29 @@ function header(title) {
   return `<header>${stack.length > 1 ? `<button class="back" data-act="back">‹ 返回</button>` : ""}<h1>${esc(title)}</h1></header>`;
 }
 
+function stats(logs, finish) {
+  const minutes = finish && logs.length ? Math.max(1, Math.round((finish.ts - logs[0].ts) / 60000)) : 0;
+  return {
+    exercises: new Set(logs.map(nameOf)).size,
+    sets: logs.length,
+    reps: logs.reduce((n, l) => n + l.reps, 0),
+    volume: Math.round(logs.reduce((n, l) => n + l.w * l.reps, 0)),
+    minutes,
+  };
+}
+
 function summaryHTML(date, logs) {
   const parts = {};
-  logs.forEach(l => ((parts[l.part] ??= {})[l.ex] ??= []).push(l));
-  let html = `<div class="summary"><h3>📅 ${date}（${logs[0].day}日）</h3>`;
+  logs.forEach(l => ((parts[l.part] ??= {})[nameOf(l)] ??= []).push(l));
+  const finish = store.finishes.find(f => f.date === date);
+  const st = stats(logs, finish);
+  let html = `<div class="summary"><h3>📅 ${date}（${logs[0].day}日）${finish ? `<span class="fin">🏁 已完成${st.minutes ? ` · ${st.minutes} 分鐘` : ""}</span>` : ""}</h3>`;
   for (const [part, exs] of Object.entries(parts)) {
     html += `<h4>${esc(part)}</h4>`;
-    for (const [ex, sets] of Object.entries(exs))
-      html += `<p>${esc(ex)}：${sets.length} 組 <span>｜${sets.map(fmtSet).join("、")}</span></p>`;
+    for (const [name, sets] of Object.entries(exs)) {
+      const orig = sets[0].actual ? `<span class="subof">（代替${esc(sets[0].ex)}）</span>` : "";
+      html += `<p>${esc(name)}${orig}：${sets.length} 組 <span>｜${sets.map(fmtSet).join("、")}</span></p>`;
+    }
   }
   return html + "</div>";
 }
@@ -209,9 +268,10 @@ const views = {
     return header("雙分化訓練計劃") +
       `<p class="hint">每個動作 ${TARGET_TEXT}<br>組間休息：胸背腿 3min　肩手 2min</p>
        <div class="grid">${DAYS.map((d, i) => {
-         const isToday = WEEKDAYS[d].includes(wd);
-         return `<button class="card day ${isToday ? "done" : ""}" data-act="day" data-di="${i}">
-           <small>${WEEKDAYS[d].map(x => "週" + WEEKDAY_NAMES[x]).join("　")}${isToday ? "・今天" : ""}</small>${d}</button>`;
+         const isToday = WEEKDAYS[d].includes(wd), fin = finishedToday(d);
+         return `<button class="card day ${isToday || fin ? "done" : ""}" data-act="day" data-di="${i}">
+           <small>${WEEKDAYS[d].map(x => "週" + WEEKDAY_NAMES[x]).join("　")}${isToday ? "・今天" : ""}</small>${d}
+           ${fin ? `<span class="sub" style="text-align:center">🏁 今日已完成</span>` : ""}</button>`;
        }).join("")}</div>
        <div class="row">
          <button class="ghost" data-act="today">📊 今日記錄${n ? `（${n} 組）` : ""}</button>
@@ -225,21 +285,50 @@ const views = {
       `${parts.length > 1 ? `<h4 class="section">${esc(part)}<span>休息 ${rest / 60} 分鐘</span></h4>` : ""}
        ${advice ? `<p class="hint">${esc(advice)}</p>` : ""}
        <div class="grid two">${exs.map((ex, ei) => {
-        const n = setsToday(ex).length;
+        const n = setsToday(ex).length, sub = getSub(ex);
         return `<button class="card ${n ? "done" : ""}" data-act="ex" data-di="${di}" data-gi="${gi}" data-ei="${ei}">${esc(ex)}
-          <span class="sub">${n ? `✅ ${n}/${TARGET_SETS.join("-")} 組` : lastText(ex)}</span></button>`;
-      }).join("")}</div>`).join("");
+          ${sub ? `<span class="sub subname">🔁 ${esc(sub)}</span>` : ""}
+          <span class="sub">${n ? `✅ ${n}/${TARGET_SETS.join("-")} 組` : lastText(keyOf(ex))}</span></button>`;
+      }).join("")}</div>`).join("") +
+      (finishedToday(DAYS[di])
+        ? `<div class="finished">🏁 今日訓練已完成</div>
+           <div class="row" style="margin-top:10px">
+             <button class="ghost" style="margin:0" data-act="summary" data-di="${di}">📊 查看總結</button>
+             <button class="ghost" style="margin:0" data-act="reopen" data-di="${di}">↩️ 繼續訓練</button>
+           </div>`
+        : `<button class="big finish" data-act="finish" data-di="${di}">🏁 完成今日訓練</button>`);
+  },
+  done({ di }) {
+    const logs = store.logs.filter(l => l.date === today());
+    const st = stats(logs, finishedToday(DAYS[di]));
+    return header("訓練完成 🎉") +
+      `<div class="stats">
+         <div><b>${st.sets}</b>組</div><div><b>${st.exercises}</b>個動作</div>
+         <div><b>${st.volume.toLocaleString()}</b>kg 總重量</div><div><b>${st.minutes || "-"}</b>分鐘</div>
+       </div>
+       ${logs.length ? summaryHTML(today(), logs) : `<div class="empty">今日沒有記錄任何組</div>`}
+       <button class="big" data-act="home">🏠 回到首頁</button>`;
   },
   ex({ di, gi, ei }) {
     const [part, advice, rest, exs] = PLAN[DAYS[di]][gi];
     const ex = exs[ei];
     const sets = setsToday(ex);
-    const w = getWeight(ex), reps = getReps(ex);
+    const sub = getSub(ex), key = keyOf(ex);
+    const w = getWeight(key), reps = getReps(key);
+    const choices = [...new Set([...(SUBS[ex] || []), ...(sub ? [sub] : [])])];
     const progress = sets.length >= TARGET_SETS.at(-1) ? "🎉 已完成，可以換下一個動作"
       : sets.length >= TARGET_SETS[0] ? `✅ 已達 ${TARGET_SETS[0]} 組，想做可以再加 1 組` : "";
     return header(ex) +
       `<p class="hint">${esc(part)}${advice ? `｜${esc(advice)}` : ""}<br>目標 ${TARGET_TEXT}，組間休息 ${rest / 60} 分鐘</p>
-       ${(last => last ? `<div class="last">上次（${fmtDate(last.date)}）：${last.sets.map(fmtSet).join("、")}</div>` : "")(lastSession(ex))}
+       <div class="subbox">
+         <div class="label">實際做的動作${sub ? `<span>🔁 以「${esc(sub)}」代替</span>` : ""}</div>
+         <div class="chips">
+           <button class="${sub ? "" : "on"}" data-act="sub" data-name="">${esc(ex)}（原定）</button>
+           ${choices.map(c => `<button class="${c === sub ? "on" : ""}" data-act="sub" data-name="${esc(c)}">${esc(c)}</button>`).join("")}
+         </div>
+         <input class="field" id="sub-input" placeholder="✏️ 其他動作，輸入後按完成" enterkeyhint="done" autocomplete="off">
+       </div>
+       ${(last => last ? `<div class="last">${sub ? esc(sub) + " " : ""}上次（${fmtDate(last.date)}）：${last.sets.map(fmtSet).join("、")}</div>` : "")(lastSession(key))}
        <div class="weight">
          <button data-act="w" data-d="-1">−${WEIGHT_STEP}</button>
          <div style="flex:1;min-width:0">
@@ -250,9 +339,9 @@ const views = {
        </div>
        <div class="reps">${REP_CHOICES.map(n =>
          `<button class="${n === reps ? "on" : ""}" data-act="reps" data-n="${n}">${n} 下</button>`).join("")}</div>
-       <button class="big" data-act="record">✅ 完成第 ${sets.length + 1} 組（${fmtW(w)}×${reps}）</button>
+       <button class="big" data-act="record">✅ 完成第 ${sets.length + 1} 組${sub ? `・${esc(sub)}` : ""}（${fmtW(w)}×${reps}）</button>
        ${progress ? `<p class="progress">${progress}</p>` : ""}
-       ${sets.length ? `<ul class="sets">${sets.map((s, i) => `<li><b>${i + 1}</b>${fmtSet(s)}</li>`).join("")}</ul>
+       ${sets.length ? `<ul class="sets">${sets.map((s, i) => `<li><b>${i + 1}</b>${esc(fmtSetNamed(s))}</li>`).join("")}</ul>
          <button class="ghost" data-act="undo">↩️ 撤銷上一組</button>` : ""}`;
   },
   today() {
@@ -279,11 +368,18 @@ function render() {
   const input = document.getElementById("w-input");
   if (input) input.addEventListener("input", () => {
     const { di, gi, ei } = s;
-    setWeight(PLAN[DAYS[di]][gi][3][ei], parseFloat(input.value) || 0);
+    const key = keyOf(PLAN[DAYS[di]][gi][3][ei]);
+    setWeight(key, parseFloat(input.value) || 0);
     scheduleSync();
     const btn = app.querySelector('[data-act="record"]');
-    const ex = PLAN[DAYS[di]][gi][3][ei];
-    btn.textContent = btn.textContent.replace(/（.*）/, `（${fmtW(getWeight(ex))}×${getReps(ex)}）`);
+    btn.textContent = btn.textContent.replace(/（[^（]*）$/, `（${fmtW(getWeight(key))}×${getReps(key)}）`);
+  });
+  const subInput = document.getElementById("sub-input");
+  if (subInput) subInput.addEventListener("change", () => {
+    const name = subInput.value.trim();
+    if (!name) return;
+    setSub(PLAN[DAYS[s.di]][s.gi][3][s.ei], name);
+    render();
   });
 }
 
@@ -305,23 +401,43 @@ app.addEventListener("click", e => {
     case "ex": return go({ view: "ex", di, gi, ei });
     case "today": return go({ view: "today" });
     case "history": return go({ view: "history" });
+    case "home": stack = [{ view: "home" }]; render(); return scrollTo(0, 0);
+    case "sub": {
+      setSub(PLAN[DAYS[s.di]][s.gi][3][s.ei], b.dataset.name);
+      return render();
+    }
+    case "finish": {
+      const n = store.logs.filter(l => l.date === today()).length;
+      if (!n && !confirm("今日還沒有記錄任何組，確定完成訓練？")) return;
+      addLog({ kind: "done", date: today(), day: DAYS[di] });
+      stopTimer();
+      return go({ view: "done", di });
+    }
+    case "summary": return go({ view: "done", di });
+    case "reopen": {
+      const fin = finishedToday(DAYS[di]);
+      if (fin) deleteLog(fin.id);
+      toast("已重新開始，繼續加油 💪");
+      return render();
+    }
     case "w": {
-      const ex = PLAN[DAYS[s.di]][s.gi][3][s.ei];
+      const ex = keyOf(PLAN[DAYS[s.di]][s.gi][3][s.ei]);
       setWeight(ex, getWeight(ex) + WEIGHT_STEP * +b.dataset.d);
       scheduleSync();
       return render();
     }
     case "reps": {
-      setReps(PLAN[DAYS[s.di]][s.gi][3][s.ei], +b.dataset.n);
+      setReps(keyOf(PLAN[DAYS[s.di]][s.gi][3][s.ei]), +b.dataset.n);
       scheduleSync();
       return render();
     }
     case "record": {
       const [part, , rest, exs] = PLAN[DAYS[s.di]][s.gi];
-      const ex = exs[s.ei], w = getWeight(ex), reps = getReps(ex);
-      addLog({ date: today(), day: DAYS[s.di], part, ex, reps, w });
-      startTimer(rest, ex);
-      toast(`已記錄 ${fmtW(w)}×${reps}`);
+      const ex = exs[s.ei], actual = getSub(ex), key = actual || ex;
+      const w = getWeight(key), reps = getReps(key);
+      addLog({ date: today(), day: DAYS[s.di], part, ex, ...(actual && { actual }), reps, w });
+      startTimer(rest, key);
+      toast(`已記錄 ${actual ? actual + " " : ""}${fmtW(w)}×${reps}`);
       return render();
     }
     case "undo": {
@@ -333,7 +449,7 @@ app.addEventListener("click", e => {
       return render();
     }
     case "export": {
-      const blob = new Blob([JSON.stringify({ logs: store.logs, weights: store.weights }, null, 1)], { type: "application/json" });
+      const blob = new Blob([JSON.stringify({ logs: store.raw.filter(l => !l.del), weights: store.weights, reps: store.reps }, null, 1)], { type: "application/json" });
       const a = document.createElement("a");
       a.href = URL.createObjectURL(blob); a.download = `gym-${today()}.json`; a.click();
       return;
